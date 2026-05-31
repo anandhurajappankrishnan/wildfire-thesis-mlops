@@ -73,10 +73,18 @@ def main() -> None:
     gcols = ["country", "latitude", "longitude"]
     g = df.groupby(gcols, group_keys=False)
 
+    # Leakage-safe features: all use obs_date and strictly prior rows at the same location.
+    # shift(lag_steps) pulls NDVI from ~7 days earlier (stride-aware); no future rows.
     df["ndvi_lag7"] = g["ndvi"].shift(lag_steps)
     weather_window = max(2, round(7 / stride_days))
-    df["temp_7d_mean"] = g["temperature_2m"].transform(lambda x: x.rolling(weather_window, min_periods=1).mean())
-    df["precip_7d_sum"] = g["total_precipitation"].transform(lambda x: x.rolling(weather_window, min_periods=1).sum())
+    # pandas rolling is trailing (current row + past only); min_periods=1 for early dates.
+    df["temp_7d_mean"] = g["temperature_2m"].transform(
+        lambda x: x.rolling(weather_window, min_periods=1).mean()
+    )
+    df["precip_7d_sum"] = g["total_precipitation"].transform(
+        lambda x: x.rolling(weather_window, min_periods=1).sum()
+    )
+    # Delta vs lagged NDVI — both known at or before obs_date.
     df["ndvi_delta7"] = df["ndvi"] - df["ndvi_lag7"]
 
     df["day_of_year"] = df["obs_date"].dt.dayofyear

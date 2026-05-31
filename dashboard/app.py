@@ -299,6 +299,7 @@ def build_timeline_figure(agg_df: pd.DataFrame, prob_col: str) -> go.Figure:
         line_shape="spline",
     )
     fig.update_layout(
+        title="Mean predicted fire probability over time by region",
         yaxis=dict(
             tickformat=".1%",
             range=[0, ymax],
@@ -333,6 +334,7 @@ def build_region_comparison(sub_df: pd.DataFrame, prob_col: str) -> go.Figure:
     )
     fig.update_traces(textposition="outside")
     fig.update_layout(
+        title="Average predicted risk by region (test set)",
         showlegend=False,
         height=240,
         xaxis=dict(
@@ -361,7 +363,7 @@ def render_research_chart(rq: str) -> None:
             color_discrete_sequence=["#1565c0", "#e65100"],
             template="plotly_white",
         )
-        fig.update_layout(**CHART_LAYOUT)
+        fig.update_layout(title="RQ2 — Feature-set ablation (PR-AUC vs F1)", **CHART_LAYOUT)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     elif rq == "rq3":
         df = load_gold_csv("xgb_feature_importance.csv")
@@ -375,7 +377,7 @@ def render_research_chart(rq: str) -> None:
             color_discrete_sequence=["#2e7d32"],
             template="plotly_white",
         )
-        fig.update_layout(**CHART_LAYOUT)
+        fig.update_layout(title="RQ3 — XGBoost feature importance (top 8)", **CHART_LAYOUT)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     elif rq == "rq4":
         df = load_gold_csv("gold_imbalance_rq4.csv")
@@ -392,22 +394,27 @@ def render_research_chart(rq: str) -> None:
             labels={"value": "Score", "imbalance_mode": "Strategy"},
             template="plotly_white",
         )
-        fig.update_layout(**CHART_LAYOUT)
+        fig.update_layout(title="RQ4 — Class imbalance strategies (XGBoost)", **CHART_LAYOUT)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     elif rq == "rq5":
         df = load_gold_csv("gold_model_results.csv")
         if df.empty:
             return
         bal = df[df["imbalance_mode"] == "balanced"] if "imbalance_mode" in df.columns else df
+        y_cols = ["pr_auc", "roc_auc"]
+        if "f1_score_best_f1" in bal.columns:
+            y_cols.append("f1_score_best_f1")
+        else:
+            y_cols.append("f1_score")
         fig = px.bar(
             bal,
             x="model_name",
-            y=["pr_auc", "roc_auc", "f1_score"],
+            y=y_cols,
             barmode="group",
-            labels={"value": "Score", "model_name": "Model"},
+            labels={"value": "Score", "model_name": "Model", "variable": "Metric"},
             template="plotly_white",
         )
-        fig.update_layout(**CHART_LAYOUT)
+        fig.update_layout(title="RQ5 — Model comparison (PR-AUC primary; F1 at tuned threshold if available)", **CHART_LAYOUT)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
@@ -496,6 +503,8 @@ c2.metric("Regions", int(df["region"].nunique()))
 c3.metric("Confirmed fires", fire_total)
 c4.metric("Elevated alerts", elevated)
 best_pr = "N/A"
+best_pr_caption = ""
+base_rate_pct = 100 * fire_total / max(len(df), 1)
 if not model_results.empty and "pr_auc" in model_results.columns:
     bal = model_results
     if "imbalance_mode" in model_results.columns:
@@ -503,7 +512,13 @@ if not model_results.empty and "pr_auc" in model_results.columns:
     if not bal.empty:
         row = bal.loc[bal["pr_auc"].idxmax()]
         best_pr = f"{row['model_name']} ({row['pr_auc']:.3f})"
-c5.metric("Best PR-AUC", best_pr)
+        best_pr_caption = (
+            f"Test-set base rate ≈ {base_rate_pct:.1f}%. "
+            "PR-AUC should exceed this random baseline — not approach 1.0 on rare events."
+        )
+c5.metric("Best PR-AUC vs base rate", best_pr)
+if best_pr_caption:
+    c5.caption(best_pr_caption)
 
 tab_map, tab_research = st.tabs(["🗺️ Risk Analytics", "📊 Research Findings"])
 sub_df = df[df["region"].isin(selected_regions)] if selected_regions else df.iloc[0:0]

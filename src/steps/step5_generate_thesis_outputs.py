@@ -56,14 +56,25 @@ def main() -> None:
     silver_path = ROOT / cfg["paths"]["silver_dir"] / "silver_features_clean.parquet"
     sdf = pd.read_parquet(silver_path)
 
-    # --- RQ1 ---
-    train_min = float(results["train_minutes"].sum())
-    pd.DataFrame(
-        {
-            "Stage": ["GEE Extraction", "Feature Engineering", "Model Training", "Prediction Output"],
-            "Avg Time (min)": [train_min * 0.55, train_min * 0.15, train_min * 0.25, train_min * 0.05],
-        }
-    ).to_csv(tbl / "rq1" / "table_1_1_pipeline_latency.csv", index=False)
+    # --- RQ1 (measured pipeline timing from pipeline_timing_latest.csv) ---
+    timing_path = gold / "pipeline_timing_latest.csv"
+    if timing_path.exists():
+        timing_df = pd.read_csv(timing_path)
+        pd.DataFrame(
+            {
+                "Stage": timing_df["step_name"],
+                "Duration (min)": timing_df["duration_min"].round(3),
+            }
+        ).to_csv(tbl / "rq1" / "table_1_1_pipeline_latency.csv", index=False)
+        train_min = float(timing_df["duration_min"].sum())
+    else:
+        train_min = float(results["train_minutes"].sum())
+        pd.DataFrame(
+            {
+                "Stage": ["Model training (only measured stage)"],
+                "Duration (min)": [round(train_min, 3)],
+            }
+        ).to_csv(tbl / "rq1" / "table_1_1_pipeline_latency.csv", index=False)
 
     preds["obs_date"] = pd.to_datetime(preds["obs_date"], errors="coerce")
     daily = (
@@ -87,25 +98,30 @@ def main() -> None:
     save_thesis_figure(fig, "rq1", "figure_1_1_system_architecture", fig_fmt)
 
     plt.figure(figsize=(10, 4))
-    stages = ["GEE+Features", "Train", "Predict"]
-    durations = [train_min * 0.7, train_min * 0.25, train_min * 0.05]
+    if timing_path.exists():
+        timing_df = pd.read_csv(timing_path)
+        stages = timing_df["step_name"].tolist()
+        durations = timing_df["duration_min"].tolist()
+    else:
+        stages = ["Model training"]
+        durations = [train_min]
     plt.barh(stages, durations, color="#4C72B0")
-    plt.xlabel("Minutes (from latest run)")
+    plt.xlabel("Minutes (measured, latest pipeline run)")
     plt.tight_layout()
     save_thesis_figure(fig, "rq1", "figure_1_2_dataflow_timeline", fig_fmt)
 
-    # --- RQ2 ---
+    # --- RQ2 (report actual ablation direction from data) ---
     ablation.to_csv(tbl / "rq2" / "table_2_1_model_performance.csv", index=False)
-    base = ablation[ablation["dataset"] == "NDVI Only"].iloc[0]
-    comb = ablation[ablation["dataset"] == "Combined"].iloc[0]
+    best_row = ablation.loc[ablation["pr_auc"].idxmax()]
+    combined_row = ablation[ablation["dataset"] == "Combined"].iloc[0]
+    baseline_name = best_row["dataset"]
+    delta_pct = 100 * (combined_row["pr_auc"] - best_row["pr_auc"]) / max(best_row["pr_auc"], 1e-9)
     pd.DataFrame(
         {
-            "Metric": ["Precision", "Recall", "PR-AUC"],
-            "Improvement (%)": [
-                (comb["precision_score"] - base["precision_score"]) / max(base["precision_score"], 1e-9) * 100,
-                (comb["recall_score"] - base["recall_score"]) / max(base["recall_score"], 1e-9) * 100,
-                (comb["pr_auc"] - base["pr_auc"]) / max(base["pr_auc"], 1e-9) * 100,
-            ],
+            "Comparison": [f"Combined vs best ({baseline_name})"],
+            "PR-AUC delta (%)": [round(delta_pct, 2)],
+            "Best feature set (PR-AUC)": [baseline_name],
+            "Combined PR-AUC": [round(combined_row["pr_auc"], 4)],
         }
     ).to_csv(tbl / "rq2" / "table_2_2_contribution_gain.csv", index=False)
 
@@ -190,6 +206,7 @@ def main() -> None:
     plt.tight_layout()
     save_thesis_figure(fig, "rq4", "figure_4_2_confusion_matrix_comparison", fig_fmt)
 
+    fn_none, fn_bal, reduction = 0, 0, 0.0
     imb_preds_path = gold / "gold_imbalance_predictions.csv"
     if imb_preds_path.exists():
         imb_preds = pd.read_csv(imb_preds_path)
@@ -201,14 +218,14 @@ def main() -> None:
         pd.DataFrame(
             {
                 "Method": ["No class weight", "Class weight (balanced)"],
-                "FN Count": [fn_none, fn_bal],
-                "Reduction (%)": ["-", f"{reduction:.1f}%"],
+                "FN Count (threshold=0.5)": [fn_none, fn_bal],
+                "FN reduction vs none (%)": ["0.0", f"{reduction:.1f}"],
             }
         ).to_csv(tbl / "rq4" / "table_4_2_false_negative_reduction.csv", index=False)
     else:
         fn_bal = int(((preds["y_true"] == 1) & (preds["XGB_pred"] == 0)).sum())
         pd.DataFrame(
-            {"Method": ["Class weight (balanced)"], "FN Count": [fn_bal], "Reduction (%)": ["-"]}
+            {"Method": ["Class weight (balanced)"], "FN Count (threshold=0.5)": [fn_bal], "FN reduction vs none (%)": ["-"]}
         ).to_csv(tbl / "rq4" / "table_4_2_false_negative_reduction.csv", index=False)
 
     # --- RQ5 ---
@@ -263,22 +280,53 @@ def main() -> None:
             plt.tight_layout()
             save_thesis_figure(fig, "rq5", "figure_5_2_model_stability_over_time", fig_fmt)
 
-    # --- RQ6 ---
+    # --- RQ6 (measured step success rates from pipeline_step_runs.csv) ---
     plt.figure(figsize=(9, 3))
     plt.axis("off")
     plt.text(0.02, 0.55, "ingest -> bronze -> silver -> train -> evaluate -> report", fontsize=13)
     plt.tight_layout()
     save_thesis_figure(fig, "rq6", "figure_6_1_airflow_dag_visualization", fig_fmt)
 
-    plt.figure(figsize=(7, 4))
-    plt.bar(["W1", "W2", "W3", "W4"], [94, 96, 98, 97], color="#C44E52")
-    plt.ylabel("Success rate (%)")
-    plt.tight_layout()
-    save_thesis_figure(fig, "rq6", "figure_6_2_pipeline_success_rate", fig_fmt)
+    runs_path = gold / "pipeline_step_runs.csv"
+    if runs_path.exists():
+        runs = pd.read_csv(runs_path)
+        runs["started_at"] = pd.to_datetime(runs["started_at"], errors="coerce", utc=True)
+        runs["week"] = runs["started_at"].dt.to_period("W").astype(str)
+        weekly = (
+            runs.groupby("week")["status"]
+            .apply(lambda s: 100 * (s == "success").mean())
+            .reset_index(name="success_rate_pct")
+            .tail(4)
+        )
+        plt.figure(figsize=(7, 4))
+        if len(weekly):
+            plt.bar(weekly["week"], weekly["success_rate_pct"], color="#C44E52")
+            plt.ylabel("Success rate (%)")
+            plt.xticks(rotation=30)
+        else:
+            plt.text(0.5, 0.5, "No pipeline runs logged yet", ha="center")
+        plt.tight_layout()
+        save_thesis_figure(fig, "rq6", "figure_6_2_pipeline_success_rate", fig_fmt)
 
-    pd.DataFrame(
-        {"Task": ["GEE Export", "SQL Load", "Model Train"], "Failure Count": [3, 1, 2], "Recovery Time (min)": [15, 5, 10]}
-    ).to_csv(tbl / "rq6" / "table_6_1_failure_analysis.csv", index=False)
+        failures = (
+            runs[runs["status"] == "failure"]
+            .groupby("step_name")
+            .agg(failure_count=("status", "count"), avg_recovery_min=("duration_sec", lambda s: s.mean() / 60))
+            .reset_index()
+            .rename(columns={"step_name": "Task"})
+        )
+        if failures.empty:
+            failures = pd.DataFrame({"Task": ["(none)"], "failure_count": [0], "avg_recovery_min": [0.0]})
+        failures.to_csv(tbl / "rq6" / "table_6_1_failure_analysis.csv", index=False)
+    else:
+        plt.figure(figsize=(7, 4))
+        plt.text(0.5, 0.5, "No pipeline_step_runs.csv — run pipeline_real.py first", ha="center")
+        plt.axis("off")
+        plt.tight_layout()
+        save_thesis_figure(fig, "rq6", "figure_6_2_pipeline_success_rate", fig_fmt)
+        pd.DataFrame(
+            {"Task": ["(no runs logged)"], "failure_count": [0], "avg_recovery_min": [0.0]}
+        ).to_csv(tbl / "rq6" / "table_6_1_failure_analysis.csv", index=False)
     pd.DataFrame(
         {
             "Metric": ["Test predictions", "Positive fire labels", "Countries"],
@@ -346,45 +394,79 @@ def main() -> None:
         ).to_csv(tbl / "rq7" / "table_7_1_decision_scenarios.csv", index=False)
 
     xgb_res = results[results["model_name"] == "XGB"].iloc[0]
+    tuned_recall = xgb_res.get("recall_score_best_f1", xgb_res["recall_score"])
     pd.DataFrame(
         {
-            "Metric": ["Best model PR-AUC", "Best model Recall", "Test fire events caught (XGB)"],
+            "Metric": [
+                "Best model PR-AUC",
+                "Best model Recall (threshold=0.5)",
+                "Best model Recall (tuned F1 threshold)",
+                "Test fire events caught (XGB, threshold=0.5)",
+                "Test fire events caught (XGB, tuned threshold)",
+            ],
             "Value": [
                 f"{xgb_res['pr_auc']:.3f}",
                 f"{xgb_res['recall_score']:.3f}",
+                f"{tuned_recall:.3f}",
                 int(((preds["y_true"] == 1) & (preds["XGB_pred"] == 1)).sum()),
+                int(((preds["y_true"] == 1) & (preds["XGB_pred_tuned"] == 1)).sum())
+                if "XGB_pred_tuned" in preds.columns
+                else int(((preds["y_true"] == 1) & (preds["XGB_pred"] == 1)).sum()),
             ],
         }
     ).to_csv(tbl / "rq7" / "table_7_2_summary_evaluation.csv", index=False)
 
     best = tbl5.sort_values("PR-AUC", ascending=False).iloc[0]
+    base_rate = float(sdf["fire_within_7d"].mean())
+    rq2_best = ablation.loc[ablation["pr_auc"].idxmax()]
+    rq2_combined = ablation[ablation["dataset"] == "Combined"].iloc[0]
+    if rq2_combined["pr_auc"] >= rq2_best["pr_auc"]:
+        rq2_text = (
+            f"Multi-source fusion (Combined PR-AUC={rq2_combined['pr_auc']:.3f}) "
+            f"matches or exceeds the best single-source set ({rq2_best['dataset']}, PR-AUC={rq2_best['pr_auc']:.3f})."
+        )
+    else:
+        rq2_text = (
+            f"Combined features (PR-AUC={rq2_combined['pr_auc']:.3f}) did **not** beat the best single-source set "
+            f"({rq2_best['dataset']}, PR-AUC={rq2_best['pr_auc']:.3f}) in this run — see `gold_ablation_rq2.csv`."
+        )
+
+    fn_reduction_text = "See `table_4_2_false_negative_reduction.csv` for measured FN counts at threshold=0.5."
+    if imb_preds_path.exists():
+        fn_reduction_text = (
+            f"At threshold=0.5, balanced class weight changed XGB false negatives from {fn_none} to {fn_bal} "
+            f"({reduction:.1f}% reduction vs none)."
+        )
+
     report = [
         "# Research Question Answers (from latest pipeline run)",
         "",
         f"- Regions: `{', '.join(sorted(preds['region_label'].unique())) if 'region_label' in preds.columns else cfg['data'].get('study_area_name')}`",
         f"- Date range: `{cfg['data']['start_date']}` to `{cfg['data']['end_date']}`",
-        f"- Best model (PR-AUC): `{best['Model']}` = `{best['PR-AUC']:.3f}`",
+        f"- Dataset base rate (silver): `{100 * base_rate:.2f}%` positive",
+        f"- Best model (PR-AUC): `{best['Model']}` = `{best['PR-AUC']:.3f}` (compare to base rate, not 1.0)",
         "",
         "## RQ1",
-        "End-to-end pipeline stages are implemented (GEE extraction, medallion files, ML, orchestration hooks).",
+        "End-to-end pipeline stages are implemented. Step durations are measured in `data/gold/pipeline_timing_latest.csv`.",
         "",
         "## RQ2",
-        "Multi-source fusion (vegetation + weather) improves PR-AUC vs single-source baselines in `gold_ablation_rq2.csv`.",
+        rq2_text,
         "",
         "## RQ3",
         "Temporal and environmental drivers are ranked in `xgb_feature_importance.csv` and RQ3 figures.",
         "",
         "## RQ4",
-        "Imbalance modes compared in `gold_imbalance_rq4.csv` with PR curves and confusion matrices.",
+        f"Imbalance modes compared in `gold_imbalance_rq4.csv`. {fn_reduction_text}",
         "",
         "## RQ5",
-        "LR / RF / XGB compared in `table_5_1_performance_summary.csv` and ROC curves.",
+        "LR / RF / XGB compared in `table_5_1_performance_summary.csv`. Threshold-independent PR-AUC/ROC-AUC are primary; "
+        "F1 at 0.5 and at validation-tuned thresholds are in `gold_model_results.csv`.",
         "",
         "## RQ6",
-        "Airflow DAG runs the same Python steps for reproducible daily execution.",
+        "Airflow DAG runs the same Python steps. Success/failure is logged to `data/gold/pipeline_step_runs.csv`.",
         "",
         "## RQ7",
-        "Dashboard placeholders + decision tables are generated; connect Power BI to SQL Gold for live KPIs.",
+        "Dashboard reads gold CSVs; decision tables use real test-set predictions.",
         "",
     ]
     (ROOT / "outputs" / "reports" / "research_question_answers.md").write_text("\n".join(report), encoding="utf-8")

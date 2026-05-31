@@ -25,7 +25,9 @@ data:
 
   gee:
     temporal_stride_days: 7          # one sample every N days
-    grid_points_per_region: 200      # random points per country per date
+    positive_points_per_region: 100  # stratified samples on FIRMS fire mask
+    background_points_per_region: 300  # uniform random negatives across AOI
+    grid_points_per_region: 200      # legacy fallback if pos/bg not set
     max_dates: null                  # null = all dates in range; set int to cap
     tile_scale: 4                    # GEE reduceRegions tile scale
     ee_project_env: "EE_PROJECT_ID"  # env var name for GEE project id
@@ -51,6 +53,8 @@ database:
 
 model:
   test_size: 0.25                    # chronological hold-out fraction
+  val_frac: 0.15                     # tail of train used for threshold tuning
+  cv_folds: 5                        # TimeSeriesSplit folds for mean ± std metrics
   lr_max_iter: 2000
   rf_n_estimators: 250
   xgb_n_estimators: 250

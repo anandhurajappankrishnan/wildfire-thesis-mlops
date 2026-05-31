@@ -1,30 +1,33 @@
-# Wildfire Thesis MLOps — Python dependencies
+# Wildfire Thesis MLOps — Python dependencies (pinned for reproducibility)
 # Install: pip install -r requirements.txt
 
 # Core data & ML
-numpy
-pandas
-pyarrow
-scipy
-scikit-learn
-xgboost
-joblib
+numpy==1.26.4
+pandas==2.2.2
+pyarrow==16.1.0
+scipy==1.13.1
+scikit-learn==1.5.1
+xgboost==2.1.1
+joblib==1.4.2
 
 # Pipeline config & env
-pyyaml
-python-dotenv
+pyyaml==6.0.1
+python-dotenv==1.0.1
 
 # Google Earth Engine extraction
-earthengine-api
+earthengine-api==0.1.411
 
 # Visualization (thesis outputs + dashboard)
-matplotlib
-seaborn
-plotly
-streamlit
+matplotlib==3.9.0
+seaborn==0.13.2
+plotly==5.22.0
+streamlit==1.37.0
 
 # Optional: SQL Server bronze load (step2b)
-pyodbc
+pyodbc==5.1.0
 
 # Optional: dashboard LLM assistant
-google-genai
+google-genai==1.0.0
+
+# Tests
+pytest==8.3.2

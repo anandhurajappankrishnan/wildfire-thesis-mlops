@@ -2,6 +2,9 @@
 Extract MODIS (NDVI/EVI), ERA5-Land weather, MCD64A1 burned area, and FIRMS
 7-day forward fire labels for each region in config/study_areas.geojson.
 
+Sampling: fire-biased points (within FIRMS forward-fire mask) plus random
+background points per region/date to raise the positive label rate honestly.
+
 Outputs: data/raw/gee_modis_era5_burnedarea.csv
 
 Requires:
@@ -23,6 +26,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 from env_setup import load_project_env  # noqa: E402
+from ml_eval import stable_int_hash  # noqa: E402
 
 
 def load_regions(path: Path) -> list[dict]:
@@ -45,8 +49,9 @@ def load_regions(path: Path) -> list[dict]:
 
 
 def build_modis_veg(d: ee.Date, aoi: ee.Geometry) -> ee.Image:
-    start = d.advance(-16, "day")
-    end = d.advance(16, "day")
+    """Trailing 32-day MODIS composite ending on obs_date (no future pixels)."""
+    start = d.advance(-32, "day")
+    end = d.advance(1, "day")  # exclusive upper bound — includes obs_date, no future days
     img = (
         ee.ImageCollection("MODIS/061/MOD13A1")
         .filterDate(start, end)
@@ -102,6 +107,58 @@ def build_burn_monthly(d: ee.Date, aoi: ee.Geometry) -> ee.Image:
     return has_fire.clip(aoi).float()
 
 
+def stable_region_seed(country: str, base_seed: int) -> int:
+    return (base_seed + stable_int_hash(country, 10_000)) % (2**31 - 1)
+
+
+def build_background_points(aoi: ee.Geometry, n_bg: int, seed: int) -> ee.FeatureCollection:
+    if n_bg <= 0:
+        return ee.FeatureCollection([])
+    return ee.FeatureCollection.randomPoints(aoi, n_bg, seed).map(
+        lambda f: f.set("sample_type", "background")
+    )
+
+
+def build_fire_biased_points(
+    fire_img: ee.Image,
+    aoi: ee.Geometry,
+    n_pos: int,
+    scale_m: int,
+    seed: int,
+) -> ee.FeatureCollection:
+    """Sample points on pixels where forward FIRMS fire is positive."""
+    if n_pos <= 0:
+        return ee.FeatureCollection([])
+    fire_class = fire_img.gt(0.5).rename("class")
+    samples = fire_class.stratifiedSample(
+        numPoints=n_pos,
+        classBand="class",
+        classValues=[1],
+        classPoints=[n_pos],
+        region=aoi,
+        scale=scale_m,
+        seed=seed,
+        geometries=True,
+    )
+    return samples.map(lambda f: f.set("sample_type", "fire_biased"))
+
+
+def build_points_for_date(
+    obs_date: date,
+    aoi: ee.Geometry,
+    n_pos: int,
+    n_bg: int,
+    scale_m: int,
+    seed: int,
+    horizon_days: int,
+) -> ee.FeatureCollection:
+    d = ee.Date(obs_date.isoformat())
+    firms = build_firms_forward_horizon(d, aoi, horizon_days)
+    bg = build_background_points(aoi, n_bg, seed)
+    pos = build_fire_biased_points(firms, aoi, n_pos, scale_m, seed + 1)
+    return bg.merge(pos)
+
+
 def sample_one_date(
     obs_date: date,
     aoi: ee.Geometry,
@@ -145,10 +202,21 @@ def sample_one_date(
                 "dewpoint_temperature_2m": props.get("dewpoint_temperature_2m"),
                 "burned_area": props.get("burned_area"),
                 "firms_fire_7d": props.get("firms_fire_7d"),
+                "sample_type": props.get("sample_type", "unknown"),
                 "source_system": "GEE",
             }
         )
     return rows
+
+
+def resolve_sampling_counts(gee_cfg: dict) -> tuple[int, int]:
+    """Return (n_positive_biased, n_background) with legacy grid_points fallback."""
+    n_pos = gee_cfg.get("positive_points_per_region")
+    n_bg = gee_cfg.get("background_points_per_region")
+    if n_pos is not None and n_bg is not None:
+        return int(n_pos), int(n_bg)
+    legacy = int(gee_cfg.get("grid_points_per_region", gee_cfg.get("grid_points", 200)))
+    return max(25, legacy // 4), legacy
 
 
 def main() -> None:
@@ -167,7 +235,7 @@ def main() -> None:
     start = datetime.strptime(cfg["data"]["start_date"], "%Y-%m-%d").date()
     end = datetime.strptime(cfg["data"]["end_date"], "%Y-%m-%d").date()
     stride = int(gee_cfg.get("temporal_stride_days", 7))
-    n_points = int(gee_cfg.get("grid_points_per_region", gee_cfg.get("grid_points", 150)))
+    n_pos, n_bg = resolve_sampling_counts(gee_cfg)
     max_dates = gee_cfg.get("max_dates")
     tile_scale = int(gee_cfg.get("tile_scale", 4))
     scale_m = int(cfg["data"]["gee_scale_meters"])
@@ -183,14 +251,19 @@ def main() -> None:
     total_jobs = len(regions) * len(dates)
     job = 0
 
+    print(f"Sampling: {n_pos} fire-biased + {n_bg} background points per region/date")
+
     for region in regions:
         country = region["country"]
-        region_seed = seed + abs(hash(country)) % 10000
-        points_fc = ee.FeatureCollection.randomPoints(region["geometry"], n_points, region_seed)
-        print(f"Region: {region['label']} ({n_points} points, {len(dates)} dates)")
+        region_seed = stable_region_seed(country, seed)
+        print(f"Region: {region['label']} ({n_pos}+{n_bg} points, {len(dates)} dates)")
 
         for i, d in enumerate(dates):
             job += 1
+            date_seed = (region_seed + i * 997) % (2**31 - 1)
+            points_fc = build_points_for_date(
+                d, region["geometry"], n_pos, n_bg, scale_m, date_seed, horizon_days
+            )
             if job % 10 == 0 or job == 1:
                 print(f"  GEE {job}/{total_jobs}: {region['label']} @ {d}")
             try:
@@ -218,7 +291,13 @@ def main() -> None:
         print(f"  MCD64 burn pixels in raw extract: {fires}")
     if "firms_fire_7d" in df.columns:
         firms = (pd.to_numeric(df["firms_fire_7d"], errors="coerce").fillna(0) > 0.5).sum()
-        print(f"  FIRMS 7-day forward fire labels: {firms}")
+        pos_rate = 100 * firms / max(len(df), 1)
+        print(f"  FIRMS 7-day forward fire labels: {firms} ({pos_rate:.2f}% positive rate)")
+        if "sample_type" in df.columns:
+            by_type = df.groupby("sample_type")["firms_fire_7d"].apply(
+                lambda s: (pd.to_numeric(s, errors="coerce").fillna(0) > 0.5).mean()
+            )
+            print(f"  Positive rate by sample_type:\n{by_type.to_string()}")
 
 
 if __name__ == "__main__":
