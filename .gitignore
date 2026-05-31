@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+
+# IDE & OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Generated at runtime (reproduce via pipeline)
+data/
+outputs/
+models/
+
+# Notebooks
+*.ipynb_checkpoints
+
+# Streamlit local config (may contain paths)
+.streamlit/secrets.toml

@@ -1,0 +1,62 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "portugal",
+        "label": "Portugal"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-9.55, 41.95],
+            [-6.15, 41.95],
+            [-6.15, 36.85],
+            [-9.55, 36.85],
+            [-9.55, 41.95]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "california",
+        "label": "California (USA)"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-122.5, 42.0],
+            [-117.5, 42.0],
+            [-117.5, 34.5],
+            [-122.5, 34.5],
+            [-122.5, 42.0]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "australia_se",
+        "label": "Southeast Australia"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [141.0, -33.5],
+            [150.5, -33.5],
+            [150.5, -38.5],
+            [141.0, -38.5],
+            [141.0, -33.5]
+          ]
+        ]
+      }
+    }
+  ]
+}
