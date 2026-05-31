@@ -1,6 +1,7 @@
 """
 Main pipeline orchestrator for the wildfire thesis MLOps project.
 
+Author: Anandhu R Krishnan
 Runs the medallion workflow: GEE extract → Bronze → Silver → Gold → thesis outputs.
 
 Usage:

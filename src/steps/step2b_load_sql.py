@@ -1,6 +1,8 @@
 """
 Optional: load Bronze parquet into SQL Server dbo.bronze_satellite_raw.
-Set SQLSERVER_CONN_STR in .env (see .env.example). Skips if unset or connection fails.
+
+Skips gracefully when SQLSERVER_CONN_STR is unset or SQL Server is unavailable.
+Input:  data/bronze/bronze_satellite_raw.parquet
 """
 from __future__ import annotations
 
