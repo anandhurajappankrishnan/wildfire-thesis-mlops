@@ -1,0 +1,13 @@
+category,item,status
+Strength,Reproducible medallion pipeline (Bronze/Silver/Gold),PASS
+Strength,Multi-region satellite + weather + terrain integration,PASS
+Strength,Location-grouped spatial holdout with zero overlap,PASS
+Strength,RF beats dummy baseline on PR-AUC,PASS
+Weakness,Modest absolute PR-AUC (~0.09) — frame as risk ranking not alarm prediction,WARN
+Weakness,SE Australia weak holdout signal (low positives),WARN
+Weakness,"Missing ignition proxies (roads, population, lightning)",WARN
+Unsafe claim,Pixel-level 7-day prediction,BLOCKED
+Unsafe claim,High-accuracy operational wildfire prediction,BLOCKED
+Unsafe claim,Causal ignition prediction,BLOCKED
+Method,Areal 14-day FIRMS label correctly implemented,PASS
+Method,No TimeSeriesSplit CV (persistent cells),DOCUMENTED

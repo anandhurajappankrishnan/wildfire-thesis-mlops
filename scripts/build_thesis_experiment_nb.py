@@ -386,7 +386,7 @@ if len(corr_cols) >= 2:
     save_rq_figure(fig, 2, "figure_2_2_feature_correlation_heatmap")"""
     ),
     md(
-        """**Finding:** Combined (17 features) PR-AUC ≈ Topography Only (~0.065–0.066); weather-only is weakest (~0.032). Fusion does not clearly beat terrain + seasonality alone on this holdout."""
+        """**Finding:** Combined (17 features) PR-AUC **0.074** modestly beats Topography Only **0.062** and NDVI Only **0.061**; weather-only remains weakest (**0.034**). Fusion provides a real but modest improvement over single-source sets — terrain + seasonality still dominate, but adding vegetation and weather lifts ranking quality on this holdout."""
     ),
 
     # ── RQ3 ────────────────────────────────────────────────────────────────

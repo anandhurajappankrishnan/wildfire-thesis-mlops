@@ -1,0 +1,5 @@
+check,status,detail
+label_source,PASS,fire_within_7d derived from forward FIRMS firms_fire_7d (14-day horizon in config)
+duplicate_cell_dates,FAIL,duplicates=666
+feature_completeness,PASS,max_null_pct=0.00% (ndvi)
+burned_area_not_label,PASS,burned_area in FEATURE set only; label is FIRMS forward window

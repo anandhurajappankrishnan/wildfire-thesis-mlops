@@ -1,0 +1,7 @@
+step_name,duration_sec,duration_min
+Extract GEE data,1151.748,19.1958
+Build Bronze layer,1.514,0.0252333333333333
+Load Bronze to SQL (optional),32.023,0.5337166666666667
+Build Silver layer,1.9,0.0316666666666666
+Train models + evaluate,67.816,1.1302666666666668
+Generate RQ figures/tables,6.785,0.1130833333333333

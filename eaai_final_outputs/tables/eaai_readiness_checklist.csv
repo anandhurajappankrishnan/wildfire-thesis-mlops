@@ -1,0 +1,10 @@
+criterion,ready
+Correct task framing (areal 14-day ranking),YES
+PR-AUC primary metric with dummy baseline,YES
+Spatial holdout leakage checks documented,YES
+Per-region metrics reported,YES
+Feature ablation included,YES
+Calibration analysis included,YES
+Limitations honestly stated,YES
+Manuscript ready for drafting,YES WITH CAVEATS
+Direct submission without manuscript framing,NO

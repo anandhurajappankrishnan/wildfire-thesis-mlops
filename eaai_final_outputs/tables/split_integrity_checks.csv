@@ -1,0 +1,8 @@
+check,status,value
+location_overlap,PASS,0
+train_rows,INFO,35891
+test_rows,INFO,4142
+train_positives,INFO,1505
+test_positives,INFO,97
+train_locations,INFO,654
+test_locations,INFO,218

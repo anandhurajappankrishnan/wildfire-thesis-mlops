@@ -1,0 +1,2 @@
+n_rows,n_features,n_regions,n_cells,date_min,date_max,positive_rate_pct,label_horizon_days,cell_size_deg
+64430,17,3,863,2023-06-01,2024-10-31,3.673754462207046,14,0.1
