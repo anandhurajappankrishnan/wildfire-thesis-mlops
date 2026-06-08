@@ -12,12 +12,12 @@ data:
   # Fire seasons to extract (recent years recommended)
   start_date: "2023-06-01"
   end_date: "2024-10-31"
-  prediction_horizon_days: 7
+  prediction_horizon_days: 14
   aoi_geojson_path: "config/study_areas.geojson"
   gee_scale_meters: 500
   study_area_name: "multi_country"
   temporal_granularity: "weekly"
-  sampling_strategy: "grid_aggregation_500m"
+  sampling_strategy: "fire_aware_areal_cells"
   ee_collections:
     ndvi_evi: "MODIS/061/MOD13A1"
     burned_area: "MODIS/061/MCD64A1"
@@ -25,9 +25,11 @@ data:
 
   gee:
     temporal_stride_days: 7          # one sample every N days
-    positive_points_per_region: 100  # stratified samples on FIRMS fire mask
-    background_points_per_region: 300  # uniform random negatives across AOI
-    grid_points_per_region: 200      # legacy fallback if pos/bg not set
+    cell_size_deg: 0.1               # areal grid cell size (degrees)
+    cells_per_region: 300            # persistent cells per region (alias: grid_points_per_region)
+    grid_points_per_region: 300      # backward-compatible alias for cells_per_region
+    fire_prior_years: 4              # MCD64A1 history years BEFORE data.start_date for cell placement
+    fire_weighted_fraction: 0.7      # fraction of cells from prior fire-prone areas (rest = background)
     max_dates: null                  # null = all dates in range; set int to cap
     tile_scale: 4                    # GEE reduceRegions tile scale
     ee_project_env: "EE_PROJECT_ID"  # env var name for GEE project id

@@ -1,0 +1,2 @@
+model_name,base_rate,precision_score,recall_score,f1_score,roc_auc,pr_auc
+DummyClassifier(stratified),0.03673754462207046,0.055,0.1134020618556701,0.07407407407407407,0.5333388554024951,0.02700002986753747

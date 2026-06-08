@@ -2,7 +2,7 @@
 Gold layer: train LR / RF / XGB models, evaluate, and export artifacts.
 
 Uses grouped spatial-temporal split (disjoint locations), validation-tuned
-thresholds, TimeSeriesSplit CV, dummy baseline, and per-region metrics.
+thresholds, dummy baseline, and per-region metrics.
 
 Input:  data/silver/silver_features_clean.parquet
 Output: data/gold/*.csv, *.joblib
@@ -29,13 +29,12 @@ from env_setup import load_project_env  # noqa: E402
 from ml_eval import (  # noqa: E402
     dummy_baseline_metrics,
     metrics_at_thresholds,
-    run_time_series_cv,
     set_global_seed,
     spatial_temporal_split,
     train_val_slice,
 )
 
-FEATURE_FULL = [
+FEATURE_LEGACY = [
     "ndvi",
     "evi",
     "temperature_2m",
@@ -48,16 +47,40 @@ FEATURE_FULL = [
     "day_of_year",
     "season_idx",
 ]
+FEATURE_FULL = [
+    "ndvi",
+    "evi",
+    "temperature_2m",
+    "total_precipitation",
+    "dewpoint_temperature_2m",
+    "wind_speed",
+    "relative_humidity",
+    "vapor_pressure_deficit",
+    "elevation",
+    "slope",
+    "ndvi_lag7",
+    "temp_7d_mean",
+    "precip_7d_sum",
+    "low_precip_days_7d",
+    "ndvi_delta7",
+    "day_of_year",
+    "season_idx",
+]
 FEATURE_VEG = ["ndvi", "evi", "ndvi_lag7", "ndvi_delta7", "day_of_year", "season_idx"]
 FEATURE_WEATHER = [
     "temperature_2m",
     "total_precipitation",
     "dewpoint_temperature_2m",
+    "wind_speed",
+    "relative_humidity",
+    "vapor_pressure_deficit",
     "temp_7d_mean",
     "precip_7d_sum",
+    "low_precip_days_7d",
     "day_of_year",
     "season_idx",
 ]
+FEATURE_TOPO = ["elevation", "slope", "day_of_year", "season_idx"]
 
 
 def build_models(cfg: dict, y_train: pd.Series, imbalance: str) -> dict[str, object]:
@@ -272,15 +295,10 @@ def main() -> None:
     if not per_region.empty:
         per_region.to_csv(gold_dir / "gold_region_metrics.csv", index=False)
 
-    # TimeSeriesSplit CV (XGB balanced)
-    cv_folds = int(cfg["model"].get("cv_folds", 5))
-
-    def xgb_factory(y_tr: pd.Series):
-        return build_models(cfg, y_tr, "balanced")["XGB"]
-
-    cv_summary = run_time_series_cv(df, FEATURE_FULL, xgb_factory, cv_folds, seed)
-    if not cv_summary.empty:
-        cv_summary.to_csv(gold_dir / "gold_cv_results.csv", index=False)
+    # TimeSeriesSplit CV is disabled for persistent areal cells: every cell recurs
+    # across all time windows, so purging test-fold locations from train removes
+    # ~100% of training rows and run_time_series_cv yields no valid folds.
+    # Holdout spatial_temporal_split (above) is the sole evaluation protocol.
 
     # RQ2 ablation (same grouped split)
     ablation_rows = [
@@ -288,6 +306,7 @@ def main() -> None:
         for label, cols in [
             ("NDVI Only", FEATURE_VEG),
             ("Weather Only", FEATURE_WEATHER),
+            ("Topography Only", FEATURE_TOPO),
             ("Combined", FEATURE_FULL),
         ]
     ]
